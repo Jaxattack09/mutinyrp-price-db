@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MutinyRP Item Price Database</title>
+<style>
+  /* Reset */
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0; padding: 20px;
+    background: #0d0d0d;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  h1 {
+    color: #ff4444;
+    text-shadow: 0 0 10px #ff0000;
+    margin-bottom: 20px;
+  }
+  #container {
+    width: 100%;
+    max-width: 960px;
+  }
+  input, button {
+    font-size: 1rem;
+    padding: 10px 14px;
+    margin: 6px 6px 12px 0;
+    border-radius: 5px;
+    border: none;
+    outline: none;
+  }
+  input[type="text"], input[type="number"], input[type="password"] {
+    background: #1a1a1a;
+    color: #00ffcc;
+    width: 220px;
+  }
+  input::placeholder {
+    color: #007766;
+  }
+  button {
+    background: #ff4444;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border: 2px solid transparent;
+  }
+  button:hover:not(:disabled) {
+    background: #cc0000;
+    border-color: #ff4444;
+  }
+  button:disabled {
+    background: #444;
+    cursor: not-allowed;
+  }
+  #search {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 20px;
+    font-weight: 600;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #1a1a1a;
+    box-shadow: 0 0 12px #ff0000;
+    margin-bottom: 30px;
+  }
+  th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #333;
+  }
+  th {
+    background: #2b0000;
+    color: #ff4444;
+    text-shadow: 0 0 3px red;
+  }
+  tr:hover {
+    background: #330000;
+  }
+  #feedback {
+    margin-bottom: 20px;
+    font-weight: 600;
+    min-height: 24px;
+  }
+  @media(max-width:600px) {
+    input[type="text"], input[type="number"], input[type="password"] {
+      width: 100%;
+      margin-bottom: 12px;
+    }
+    button {
+      width: 100%;
+      margin-bottom: 12px;
+    }
+  }
+</style>
+</head>
+<body>
+  <div id="container">
+    <h1>⚓ MutinyRP Item Price Database</h1>
+
+    <input
+      type="text"
+      id="search"
+      placeholder="🔍 Search items..."
+      autocomplete="off"
+      aria-label="Search items"
+    />
+
+    <table id="itemTable" aria-label="Item Price Table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>GMod Price</th>
+          <th>IRL ($)</th>
+          <th>Hours @ $7.25/hr</th>
+          <th>Delete (Admin)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="feedback" role="alert" aria-live="polite"></div>
+
+    <h2>Add New Item</h2>
+    <form id="addItemForm" aria-label="Add New Item Form">
+      <input
+        type="text"
+        id="newItem"
+        placeholder="Item Name"
+        required
+        autocomplete="off"
+        aria-required="true"
+      />
+      <input
+        type="number"
+        id="newPrice"
+        placeholder="GMod Price"
+        min="1"
+        required
+        aria-required="true"
+      />
+      <button type="submit">Add Item</button>
+    </form>
+
+    <h2>Admin Panel</h2>
+    <input
+      type="password"
+      id="adminPass"
+      placeholder="Enter Admin Passcode"
+      autocomplete="off"
+      aria-label="Admin Passcode"
+    />
+  </div>
+
+  <script>
+    const API = "/.netlify/functions";
+    let items = [];
+    let adminPass = "";
+
+    const feedbackEl = document.getElementById("feedback");
+    const adminPassInput = document.getElementById("adminPass");
+    const itemTableBody = document.querySelector("#itemTable tbody");
+    const searchInput = document.getElementById("search");
+    const addItemForm = document.getElementById("addItemForm");
+
+    const CONVERSION_RATE_GMOD_TO_USD = 30 / 300000000; // $30 per 300M GMod
+    const MIN_WAGE = 7.25;
+
+    // Fetch and render items from backend
+    async function fetchItems() {
+      try {
+        const res = await fetch(`${API}/getItems`);
+        if (!res.ok) throw new Error("Failed to fetch items");
+        items = await res.json();
+        renderTable();
+        feedbackEl.textContent = "";
+      } catch (err) {
+        feedbackEl.textContent = "⚠️ Error loading items.";
+        console.error(err);
+      }
+    }
+
+    // Render the table rows based on current filter
+    function renderTable() {
+      const filter = searchInput.value.trim().toLowerCase();
+      itemTableBody.innerHTML = "";
+      const filtered = items.filter(i => i.name.toLowerCase().includes(filter));
+      if (filtered.length === 0) {
+        itemTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#999;">No matching items found.</td></tr>`;
+        return;
+      }
+      filtered.forEach(item => {
+        const usd = item.price * CONVERSION_RATE_GMOD_TO_USD;
+        const hours = usd / MIN_WAGE;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(item.name)}</td>
+          <td>${item.price.toLocaleString()}</td>
+          <td>$${usd.toFixed(2)}</td>
+          <td>${hours.toFixed(1)}</td>
+          <td>
+            <button
+              class="delete-btn"
+              data-id="${item.id}"
+              ${adminPassInput.value === "" ? "disabled" : ""}
+              aria-label="Delete item ${escapeHtml(item.name)}"
+              title="${adminPassInput.value === "" ? "Enter admin passcode to enable delete" : "Delete this item"}"
+            >❌</button>
+          </td>
+        `;
+        itemTableBody.appendChild(tr);
+      });
+      // Attach delete listeners
+      document.querySelectorAll(".delete-btn").forEach(btn => {
+        btn.addEventListener("click", () => deleteItem(btn.dataset.id));
+      });
+    }
+
+    // Add new item via API call
+    async function addItem(event) {
+      event.preventDefault();
+      const name = document.getElementById("newItem").value.trim();
+      const price = Number(document.getElementById("newPrice").value);
+      if (!name || !price || price <= 0) {
+        feedbackEl.textContent = "⚠️ Please enter valid item name and positive price.";
+        return;
+      }
+      feedbackEl.textContent = "⏳ Adding item...";
+      try {
+        const res = await fetch(`${API}/addItem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, price }),
+        });
+        if (!res.ok) throw new Error("Failed to add item");
+        feedbackEl.textContent = `✅ Added "${name}"`;
+        addItemForm.reset();
+        await fetchItems();
+      } catch (err) {
+        feedbackEl.textContent = "⚠️ Error adding item.";
+        console.error(err);
+      }
+    }
+
+    // Delete item with admin passcode
+    async function deleteItem(id) {
+      if (adminPassInput.value.trim() === "") {
+        feedbackEl.textContent = "⚠️ Please enter admin passcode to delete items.";
+        return;
+      }
+      if (!confirm("Are you sure you want to delete this item?")) return;
+      feedbackEl.textContent = "⏳ Deleting item...";
+      try {
+        const res = await fetch(`${API}/deleteItem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, pass: adminPassInput.value }),
+        });
+        if (res.status === 403) {
+          feedbackEl.textContent = "❌ Invalid admin passcode.";
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to delete item");
+        feedbackEl.textContent = "✅ Item deleted.";
+        await fetchItems();
+      } catch (err) {
+        feedbackEl.textContent = "⚠️ Error deleting item.";
+        console.error(err);
+      }
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[m]);
+    }
+
+    // When admin passcode changes, update delete buttons
+    adminPassInput.addEventListener("input", () => {
+      renderTable();
+      feedbackEl.textContent = "";
+    });
+
+    // Search filter triggers table re-render
+    searchInput.addEventListener("input", renderTable);
+
+    // Handle add item form submit
+    addItemForm.addEventListener("submit", addItem);
+
+    // Initial fetch
+    fetchItems();
+  </script>
+</body>
+</html>
